@@ -1,18 +1,24 @@
 package com.sid.tp_keyclock.config;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
+import java.util.Map;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationConverter;
+import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-
-import java.util.List;
 
 @Configuration
 @EnableMethodSecurity
@@ -20,26 +26,78 @@ public class securityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        http.csrf(AbstractHttpConfigurer::disable)
+        return http
+                .csrf(csrf -> csrf.disable())
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/public/**").permitAll()
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/public").permitAll()
+                        .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/demandes/**").hasAnyRole("USER", "ADMIN")
                         .anyRequest().authenticated())
-                .oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
-
-        return http.build();
+                .oauth2ResourceServer(oauth -> oauth.jwt(
+                        jwt -> jwt.jwtAuthenticationConverter(jwtConverter())))
+                .build();
     }
 
     @Bean
-    public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(List.of("*"));
-        configuration.setAllowedMethods(List.of("*"));
-        configuration.setAllowedHeaders(List.of("*"));
+    JwtAuthenticationConverter jwtConverter() {
 
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
-        return source;
+        JwtGrantedAuthoritiesConverter scopes =
+                new JwtGrantedAuthoritiesConverter();
+
+        JwtAuthenticationConverter converter =
+                new JwtAuthenticationConverter();
+
+        converter.setJwtGrantedAuthoritiesConverter(jwt -> {
+
+            Collection<GrantedAuthority> result =
+                    new ArrayList<>(scopes.convert(jwt));
+
+            Map<String, Object> access =
+                    jwt.getClaimAsMap("realm_access");
+
+            if (access != null &&
+                    access.get("roles") instanceof List<?> roles) {
+
+                for (Object role : roles) {
+                    result.add(
+                            new SimpleGrantedAuthority(
+                                    "ROLE_" + role
+                            )
+                    );
+                }
+            }
+
+            return result;
+        });
+
+        return converter;
     }
 
+    @Bean
+    CorsConfigurationSource corsConfigurationSource() {
+
+        CorsConfiguration config =
+                new CorsConfiguration();
+
+        config.setAllowedOrigins(
+                List.of("http://localhost:5173")
+        );
+
+        config.setAllowedMethods(
+                List.of("GET", "POST", "PATCH", "OPTIONS")
+        );
+
+        config.setAllowedHeaders(
+                List.of("Authorization", "Content-Type")
+        );
+
+        UrlBasedCorsConfigurationSource source =
+                new UrlBasedCorsConfigurationSource();
+
+        source.registerCorsConfiguration("/**", config);
+
+        return source;
+    }
 }

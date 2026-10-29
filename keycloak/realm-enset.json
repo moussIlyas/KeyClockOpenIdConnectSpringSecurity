@@ -1,0 +1,83 @@
+{
+  "realm": "enset-realm",
+  "enabled": true,
+  "displayName": "ENSET Realm",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": false,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "sslRequired": "external",
+  "roles": {
+    "realm": [
+      { "name": "USER", "description": "Utilisateur standard" },
+      { "name": "ADMIN", "description": "Administrateur" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "react-client",
+      "name": "React Client",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": true,
+      "rootUrl": "http://localhost:5173/",
+      "baseUrl": "http://localhost:5173/",
+      "redirectUris": ["http://localhost:5173/*"],
+      "webOrigins": ["http://localhost:5173"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/*"
+      },
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "profile",
+        "roles",
+        "basic",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "address",
+        "phone",
+        "offline_access",
+        "microprofile-jwt"
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Alice",
+      "lastName": "Martin",
+      "email": "alice@enset.tg",
+      "credentials": [
+        { "type": "password", "value": "alice123", "temporary": false }
+      ],
+      "realmRoles": ["USER"]
+    },
+    {
+      "username": "bob",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Bob",
+      "lastName": "Dupont",
+      "email": "bob@enset.tg",
+      "credentials": [
+        { "type": "password", "value": "bob123", "temporary": false }
+      ],
+      "realmRoles": ["USER", "ADMIN"]
+    }
+  ]
+}

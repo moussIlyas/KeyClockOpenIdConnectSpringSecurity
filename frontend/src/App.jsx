@@ -1,115 +1,153 @@
 import { useEffect, useState } from 'react'
-import keycloak from './keycloak'
+
+import keycloak from './keycloak.js'
+import { appelerApi } from './api.js'
+
 import './App.css'
 
-// Backend Spring Boot (voir application.properties : server.port=8081)
-const API_URL = 'http://localhost:8081'
+export default function App() {
+  const [objet, setObjet] = useState('')
 
-function App() {
-  const [initialized, setInitialized] = useState(false)
-  const [authenticated, setAuthenticated] = useState(false)
-  const [username, setUsername] = useState('')
-  const [notes, setNotes] = useState([])
-  const [error, setError] = useState(null)
+  const [mesDemandes, setMesDemandes] = useState([])
 
-  // Appelle /api/notes en joignant le JWT, avec refresh du token si besoin
-  async function loadNotes() {
+  const [toutes, setToutes] = useState([])
+
+  const [message, setMessage] = useState('')
+
+  const roles = keycloak.tokenParsed?.realm_access?.roles || []
+
+  const isAdmin = roles.includes('ADMIN')
+
+  const username = keycloak.tokenParsed?.preferred_username || 'Utilisateur'
+
+  async function charger() {
     try {
-      // Si le token expire dans moins de 30s, Keycloak en génère un nouveau
-      await keycloak.updateToken(30)
+      setMesDemandes(await appelerApi('/api/demandes'))
 
-      const response = await fetch(`${API_URL}/api/notes`, {
-        headers: {
-          Authorization: `Bearer ${keycloak.token}`,
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Erreur HTTP ${response.status}`)
+      if (isAdmin) {
+        setToutes(await appelerApi('/api/admin/demandes'))
       }
-
-      setNotes(await response.json())
     } catch (e) {
-      setError(`Impossible de charger les notes : ${e.message}`)
+      setMessage('Erreur : ' + e.message)
     }
   }
 
   useEffect(() => {
-    keycloak
-      .init({
-        onLoad: 'login-required',
-        checkLoginIframe: false,
-        pkceMethod: 'S256',
-      })
-      .then((isAuth) => {
-        setAuthenticated(isAuth)
-        if (isAuth) {
-          console.log('token', keycloak.token)
-          console.log('tokenParsed', keycloak.tokenParsed)
-          setUsername(keycloak.tokenParsed?.preferred_username ?? '')
-          loadNotes()
-        }
-      })
-      .catch((e) => {
-        setError(`Impossible de contacter Keycloak : ${e.message}`)
-      })
-      .finally(() => setInitialized(true))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    charger()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (!initialized) {
-    return <p>Chargement de l'application...</p>
+  async function creer(e) {
+    e.preventDefault()
+
+    try {
+      await appelerApi('/api/demandes', {
+        method: 'POST',
+        body: JSON.stringify({ objet: objet }),
+      })
+
+      setObjet('')
+
+      setMessage('Demande creee.')
+
+      await charger()
+    } catch (e) {
+      setMessage('Erreur : ' + e.message)
+    }
   }
 
-  if (!authenticated) {
-    return (
-      <>
-        <p>Non authentifié.</p>
-        <button type="button" onClick={() => keycloak.login()}>
-          Se connecter
-        </button>
-      </>
-    )
+  async function changerStatut(id, statut) {
+    try {
+      await appelerApi(`/api/admin/demandes/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ statut: statut }),
+      })
+
+      setMessage(
+        statut === 'VALIDEE' ? 'Demande validee.' : 'Demande refusee.',
+      )
+
+      await charger()
+    } catch (e) {
+      setMessage('Erreur : ' + e.message)
+    }
   }
 
   return (
-    <>
-      <header style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <h1>Bonjour {username} 👋</h1>
+    <main>
+      <header>
+        <h1>Gestion des demandes</h1>
+
+        <p>
+          Connecte :<strong> {username}</strong>
+        </p>
+
+        <p>Roles : {roles.join(', ')}</p>
+
         <button
-          type="button"
-          onClick={() => keycloak.logout({ redirectUri: window.location.origin })}
+          onClick={() =>
+            keycloak.logout({
+              redirectUri: 'http://localhost:5173/',
+            })
+          }
         >
-          Déconnexion
+          Se deconnecter
         </button>
       </header>
 
-      {error && <p style={{ color: 'red' }}>⚠️ {error}</p>}
+      <section>
+        <h2>Creer une demande</h2>
 
-      <h2>Mes notes</h2>
-      {!error && notes.length === 0 && <p>Aucune note à afficher.</p>}
-      {notes.length > 0 && (
-        <table>
-          <thead>
-            <tr>
-              <th>Module</th>
-              <th>Note</th>
-              <th>Étudiant</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notes.map((n, i) => (
-              <tr key={i}>
-                <td>{n.module}</td>
-                <td>{n.note}</td>
-                <td>{n.etudiant}</td>
-              </tr>
+        <form onSubmit={creer}>
+          <input
+            value={objet}
+            onChange={(e) => setObjet(e.target.value)}
+            placeholder="Objet de la demande"
+            required
+          />
+
+          <button type="submit">Envoyer</button>
+        </form>
+      </section>
+
+      <section>
+        <h2>Mes demandes</h2>
+
+        <ul>
+          {mesDemandes.map((d) => (
+            <li key={d.id}>
+              #{d.id} - {d.objet} ({d.statut})
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {isAdmin && (
+        <section>
+          <h2>Administration : toutes les demandes</h2>
+
+          <ul>
+            {toutes.map((d) => (
+              <li key={d.id}>
+                #{d.id} - {d.objet} ({d.statut}){' '}
+                {d.statut !== 'VALIDEE' && (
+                  <button onClick={() => changerStatut(d.id, 'VALIDEE')}>
+                    Valider
+                  </button>
+                )}
+                {d.statut !== 'REFUSEE' && (
+                  <button onClick={() => changerStatut(d.id, 'REFUSEE')}>
+                    Refuser
+                  </button>
+                )}
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
+        </section>
       )}
-    </>
+
+      <p role="status">{message}</p>
+    </main>
   )
 }
-
-export default App
